@@ -65,6 +65,12 @@ cookies or accounts are used. Google Fonts is requested for typography; the app
 has system-font fallbacks. Application code and models are bundled rather than
 loaded from a third-party CDN.
 
+Wires are routed from terminal anchors attached to each component's metal lead
+or contact geometry. Lesson topology chooses which terminals connect; rotations
+and scene transforms do not change their alignment. The geometry regression
+tests cover the cell, resistor, LED, switch and other lesson layouts without
+requiring WebGL.
+
 ## Inspiration and authorship
 
 Inspired by the interactive-workbench presentation of

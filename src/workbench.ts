@@ -3,14 +3,15 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { Inputs, Lesson } from './lessons';
 import type { Result } from './simulation';
 import { format } from './simulation';
+import { CircuitGeometry, palette, type CircuitConnection } from './circuit-geometry';
 
-const palette = { ink: 0x203747, teal: 0x268e87, lime: 0xc7db77, brass: 0xb59a56, wood: 0xcaa579, red: 0xc76b55, paper: 0xf5f1e7 };
 export class Workbench {
   private scene = new THREE.Scene();
   private camera = new THREE.OrthographicCamera(-7, 7, 5, -5, 0.1, 100);
   private renderer: THREE.WebGLRenderer;
   private controls: OrbitControls;
   private model = new THREE.Group();
+  private circuit?: CircuitGeometry;
   private raycaster = new THREE.Raycaster();
   private switchBlade?: THREE.Group;
   private lights: THREE.Mesh[] = [];
@@ -93,22 +94,6 @@ export class Workbench {
   private material(color: number, metalness = 0): THREE.MeshStandardMaterial {
     return new THREE.MeshStandardMaterial({ color, roughness: metalness ? 0.38 : 0.8, metalness });
   }
-  private mesh(geometry: THREE.BufferGeometry, color: number, position: [number, number, number], parent: THREE.Object3D = this.model, metalness = 0): THREE.Mesh {
-    const mesh = new THREE.Mesh(geometry, this.material(color, metalness));
-    mesh.position.set(...position);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    const edge = new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 35), new THREE.LineBasicMaterial({ color: palette.ink, transparent: true, opacity: 0.72 }));
-    mesh.add(edge);
-    parent.add(mesh);
-    return mesh;
-  }
-  private box(w: number, h: number, d: number, color: number, position: [number, number, number], parent?: THREE.Object3D): THREE.Mesh {
-    return this.mesh(new THREE.BoxGeometry(w, h, d), color, position, parent);
-  }
-  private cylinder(radius: number, height: number, color: number, position: [number, number, number], parent?: THREE.Object3D, metalness = 0): THREE.Mesh {
-    return this.mesh(new THREE.CylinderGeometry(radius, radius, height, 40), color, position, parent, metalness);
-  }
   private texture(text: string, color = '#203747', background = '#f5f1e7'): THREE.CanvasTexture {
     const canvas = document.createElement('canvas');
     canvas.width = 512;
@@ -138,98 +123,17 @@ export class Workbench {
     this.model.add(label);
     return label;
   }
-  private battery(x: number, z: number, text: string): void {
-    const body = this.cylinder(0.58, 1.65, palette.lime, [x, 0.86, z]);
-    this.cylinder(0.59, 0.16, palette.brass, [x, 1.7, z], undefined, 0.6);
-    this.cylinder(0.24, 0.16, palette.ink, [x, 1.84, z], undefined, 0.4);
-    this.cylinder(0.59, 0.12, palette.ink, [x, 0.08, z]);
-    const wrap = new THREE.Mesh(new THREE.PlaneGeometry(1.04, 0.32), new THREE.MeshBasicMaterial({ map: this.texture(text, '#203747', '#c7db77'), side: THREE.DoubleSide }));
-    wrap.position.set(0, 0, 0.584);
-    body.add(wrap);
-    this.batteryLabels.push(wrap);
-    this.label('POWER SOURCE', [x, 2.4, z], 1.95);
-  }
-  private bulb(x: number, z: number, led = false): void {
-    this.box(1.4, 0.22, 1.25, palette.wood, [x, 0.12, z]);
-    this.cylinder(0.4, 0.22, palette.brass, [x, 0.36, z], undefined, 0.5);
-    this.cylinder(0.27, 0.45, palette.ink, [x, 0.64, z]);
-    for (let y = 0.5; y < 0.83; y += 0.09) this.cylinder(0.3, 0.025, palette.brass, [x, y, z], undefined, 0.5);
-    const globe = this.mesh(led ? new THREE.CapsuleGeometry(0.24, 0.25, 8, 24) : new THREE.SphereGeometry(0.48, 32, 24), 0xffdda1, [x, 1.16, z]);
-    this.lights.push(globe);
-    this.label(led ? 'LED' : 'LAMP', [x, 1.95, z], 1.25);
-  }
-  private knife(x: number, z: number): void {
-    this.box(1.9, 0.22, 1.1, palette.wood, [x, 0.12, z]);
-    for (const offset of [-0.62, 0.62]) {
-      const contact = this.box(0.27, 0.3, 0.46, palette.brass, [x + offset, 0.37, z]);
-      contact.userData.toggle = true;
-      this.cylinder(0.08, 0.04, palette.ink, [x + offset, 0.55, z]);
-    }
-    this.switchBlade = new THREE.Group();
-    this.switchBlade.position.set(x - 0.62, 0.55, z);
-    this.model.add(this.switchBlade);
-    const blade = this.box(1.35, 0.075, 0.22, palette.brass, [0.62, 0, 0], this.switchBlade);
-    const handle = this.box(0.42, 0.16, 0.37, palette.teal, [1.14, 0.05, 0], this.switchBlade);
-    blade.userData.toggle = true;
-    handle.userData.toggle = true;
-    this.label('CLICK TO SWITCH', [x, 1.6, z], 2.15);
-  }
-  private resistor(x: number, z: number, label = 'R1'): void {
-    const body = this.cylinder(0.19, 0.95, 0xe3c7a1, [x, 0.5, z]);
-    body.rotation.z = Math.PI / 2;
-    const colors = [0x73412e, 0x263b44, 0xbf5847, palette.brass];
-    for (let index = 0; index < 4; index++) {
-      const band = this.cylinder(0.195, 0.08, colors[index], [x + (index - 1.5) * 0.19, 0.5, z]);
-      band.rotation.z = Math.PI / 2;
-    }
-    const lead = this.cylinder(0.035, 1.8, palette.brass, [x, 0.5, z], undefined, 0.6);
-    lead.rotation.z = Math.PI / 2;
-    this.label(label, [x, 1.17, z], 1.4);
-  }
-  private capacitor(x: number, z: number, label = 'C1'): void {
-    this.cylinder(0.36, 0.95, 0x669eac, [x, 0.77, z]);
-    this.cylinder(0.37, 0.04, 0xc6d5ce, [x, 1.25, z], undefined, 0.6);
-    for (const offset of [-0.16, 0.16]) this.cylinder(0.025, 0.32, palette.brass, [x + offset, 0.17, z]);
-    this.box(0.07, 0.75, 0.025, 0xcce3dd, [x + 0.16, 0.77, z + 0.34]);
-    this.capacitorLabels.push(this.label(label, [x, 1.7, z], 1.4));
-  }
-  private chip(x: number, z: number, name: string): void {
-    this.box(1.7, 0.36, 0.95, palette.ink, [x, 0.55, z]);
-    for (let index = 0; index < 4; index++) for (const side of [-1, 1]) {
-      this.box(0.09, 0.25, 0.5, palette.brass, [x - 0.59 + index * 0.4, 0.36, z + side * 0.66]);
-    }
-    this.label(name, [x, 1.23, z], 1.9);
-  }
-  private transistor(x: number, z: number, mosfet: boolean): void {
-    if (mosfet) {
-      this.box(0.95, 1.2, 0.26, palette.ink, [x, 1, z]);
-      this.box(0.95, 0.36, 0.25, 0xc8c8b6, [x, 1.72, z]);
-    } else this.cylinder(0.39, 0.7, palette.ink, [x, 1, z]);
-    for (const offset of [-0.26, 0, 0.26]) this.cylinder(0.035, 0.65, palette.brass, [x + offset, 0.35, z]);
-    this.label(mosfet ? 'MOSFET' : 'NPN', [x, 2.2, z], 1.5);
-  }
-  private breadboard(): void {
-    this.box(4.5, 0.3, 2.2, 0xe6e5d5, [0, 0.17, 0.3]);
-    this.box(3.8, 0.03, 0.07, palette.red, [0, 0.335, -0.55]);
-    this.box(3.8, 0.03, 0.07, palette.teal, [0, 0.335, 1.12]);
-    this.box(4.1, 0.03, 0.1, 0xd1cebd, [0, 0.335, 0.3]);
-    for (let column = 0; column < 18; column++) for (let row = 0; row < 6; row++) {
-      this.cylinder(0.032, 0.008, palette.ink, [-1.85 + column * 0.22, 0.337, -0.3 + row * 0.23]);
-    }
-    this.resistor(-0.8, 0.2);
-    this.bulb(1, 0.1, true);
-  }
-  private wire(points: [number, number, number][], color: number): void {
-    const curve = new THREE.CatmullRomCurve3(points.map(point => new THREE.Vector3(...point)));
+  private wire(connection: CircuitConnection, parent: THREE.Group): void {
+    const { curve, color } = connection;
     const wire = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.045, 8, false), this.material(color));
     wire.castShadow = true;
-    this.model.add(wire);
+    parent.add(wire);
     this.wires.push(curve);
     for (let index = 0; index < 5; index++) {
       const particle = new THREE.Mesh(new THREE.SphereGeometry(0.064, 8, 8), new THREE.MeshBasicMaterial({ color: 0xf8ce68 }));
       particle.userData.path = this.wires.length - 1;
       particle.userData.offset = index / 5;
-      this.model.add(particle);
+      parent.add(particle);
       this.particles.push(particle);
     }
   }
@@ -245,6 +149,7 @@ export class Workbench {
       }
     });
     this.model.clear();
+    this.circuit = undefined;
     this.switchBlade = undefined;
     this.display = undefined;
     this.batteryLabels = [];
@@ -254,84 +159,32 @@ export class Workbench {
     this.wires = [];
   }
 
-  setLesson(lesson: Lesson, inputs: Inputs): void {
+  setLesson(lesson: Lesson, inputs: Inputs, resetCamera = true): void {
     this.disposeModel();
     this.lesson = lesson;
-    const kind = lesson.kind;
-    const led = ['led', 'breadboard', 'logic', 'timer', 'button', 'transistor', 'mosfet', 'comparator'].includes(kind);
-    this.battery(-3.1, 0.1, `${inputs.voltage} V`);
-    if (kind === 'cells') {
-      for (let index = 1; index < inputs.secondary; index++) this.battery(-3.1 + index * 1.3, -1.2, `${inputs.voltage} V`);
-      this.resistor(1, 1);
-      this.bulb(3, 0);
-    } else if (kind === 'breadboard') {
-      this.breadboard();
-      this.knife(0, 2.4);
-    } else if (['capacitor', 'rc', 'filter'].includes(kind)) {
-      this.capacitor(1.7, -0.6, `${inputs.capacitance} uF`);
-      if (kind === 'capacitor' && inputs.gate !== 'single') this.capacitor(0, -0.6, `${inputs.secondary} uF`);
-      else this.resistor(0, 1.5);
-      this.display = this.label('CAPACITOR', [2, 2.2, 1.1], 2);
-      if (kind === 'rc') this.knife(-1, 2.1);
-    } else if (['transistor', 'mosfet'].includes(kind)) {
-      this.transistor(0, 0, kind === 'mosfet');
-      this.resistor(-0.8, 1.6, 'DRIVE');
-      this.bulb(2.9, -0.2, true);
-      this.resistor(1.8, 1.7, 'LOAD');
-    } else if (['logic', 'timer', 'opamp', 'comparator'].includes(kind)) {
-      this.chip(0, 0.1, kind === 'timer' ? 'NE555' : kind === 'logic' ? inputs.gate : kind === 'comparator' ? 'COMPARE' : 'OP-AMP');
-      this.bulb(2.9, -0.2, true);
-      if (kind === 'timer') { this.capacitor(1.7, 1.65); this.resistor(-1, 1.9, 'R1'); }
-      else this.resistor(0, 1.8, kind === 'logic' ? 'OUTPUT' : 'FEEDBACK');
-      this.display = this.label('OUTPUT', [2.9, 2.7, -0.2], 1.7);
-    } else if (kind === 'sensor') {
-      this.cylinder(0.45, 0.18, palette.wood, [0, 0.7, 0]);
-      for (let index = 0; index < 5; index++) this.box(0.62, 0.025, 0.028, palette.red, [0, 0.8, -0.25 + index * 0.12]);
-      for (const side of [-1, 1]) this.cylinder(0.025, 0.65, palette.brass, [side * 0.23, 0.3, 0]);
-      this.label(inputs.gate.toUpperCase(), [0, 1.5, 0], 1.8);
-      this.resistor(0.2, 1.6, 'DIVIDER');
-      this.display = this.label('SENSOR OUTPUT', [2.5, 1, 0], 2.1);
-    } else if (kind === 'meter' || kind === 'ac') {
-      this.box(1.5, 0.4, 2, palette.teal, [1.5, 0.25, 0]);
-      this.cylinder(0.34, 0.12, palette.ink, [1.5, 0.55, 0.4]);
-      this.display = this.label('READING', [1.5, 1.35, -0.1], 2);
-      this.resistor(-0.5, 1.6);
-    } else if (['series', 'parallel', 'divider', 'kirchhoff', 'pot'].includes(kind)) {
-      this.resistor(-0.3, -0.5, 'R1');
-      this.resistor(kind === 'parallel' ? -0.3 : 1.65, kind === 'parallel' ? 1.5 : -0.5, 'R2');
-      if (kind === 'pot') {
-        this.cylinder(0.4, 0.42, palette.teal, [0.5, 0.5, 1.2]);
-        this.box(0.08, 0.1, 0.45, palette.ink, [0.5, 0.76, 1.2]);
-      }
-      this.display = this.label('VOUT', [2.8, 1, 1], 1.7);
-    } else if (['diode', 'rectifier', 'zener'].includes(kind)) {
-      this.resistor(-0.5, 1.4);
-      const diode = this.cylinder(0.18, 0.7, palette.ink, [1, 0.5, -0.3]);
-      diode.rotation.z = Math.PI / 2;
-      const band = this.cylinder(0.184, 0.09, 0xd1d4c8, [1.2, 0.5, -0.3]);
-      band.rotation.z = Math.PI / 2;
-      this.label(kind === 'zener' ? '3.3 V ZENER' : 'DIODE', [1, 1.2, -0.3], 1.9);
-      if (kind === 'rectifier' && inputs.gate === 'full-wave') for (const point of [[0, -1], [1, -1.7], [2, -1]] as const) {
-        const extra = this.cylinder(0.15, 0.65, palette.ink, [point[0], 0.5, point[1]]);
-        extra.rotation.z = Math.PI / 2;
-      }
-      this.display = this.label('OUTPUT', [2.7, 1, 1], 1.7);
-    } else {
-      this.bulb(2.7, -0.3, led);
-      this.knife(0, 2);
-      if (kind === 'led' || kind === 'ohm' || kind === 'conductor' || kind === 'button') this.resistor(0, -0.8, kind === 'conductor' ? 'MATERIAL' : 'RESISTOR');
+    this.circuit = new CircuitGeometry(lesson, inputs);
+    this.model.add(this.circuit);
+    this.switchBlade = this.circuit.switchBlade;
+    this.lights = this.circuit.lights;
+    for (const body of this.circuit.batteryBodies) {
+      const wrap = new THREE.Mesh(new THREE.PlaneGeometry(1.04, 0.32), new THREE.MeshBasicMaterial({ map: this.texture(`${inputs.voltage} V`, '#203747', '#c7db77'), side: THREE.DoubleSide }));
+      wrap.position.set(0, 0, 0.584);
+      body.add(wrap);
+      this.batteryLabels.push(wrap);
     }
-    this.wire([[-3.1, 1.88, 0.1], [-2.2, 0.55, -1.3], [0, 0.38, -1.5], [2.7, 0.38, -0.3]], palette.red);
-    this.wire([[2.7, 0.35, 0.1], [2.4, 0.18, 2], [0.6, 0.54, 2]], palette.teal);
-    this.wire([[-0.65, 0.54, 2], [-2.4, 0.17, 2.7], [-3.1, 0.14, 0.6]], palette.teal);
-    if (kind === 'parallel') this.wire([[-1.5, 0.35, -1], [-1.2, 0.45, 1.5], [1, 0.4, 1.5], [2.7, 0.35, 0]], palette.red);
-    if (['transistor', 'mosfet', 'logic', 'opamp', 'comparator'].includes(kind)) this.wire([[-2, 0.3, 1], [-1, 0.45, 1.6], [0, 0.5, 0.5]], 0xb7a25e);
-    this.home();
+    for (const request of this.circuit.labels) {
+      const label = this.label(request.text, request.position, request.width);
+      if (request.role === 'capacitor') this.capacitorLabels.push(label);
+      if (request.role === 'display') this.display = label;
+    }
+    for (const connection of this.circuit.connections) this.wire(connection, this.circuit);
+    if (resetCamera) this.home();
   }
 
   update(inputs: Inputs, result: Result): void {
+    if (this.lesson && ['led', 'diode'].includes(this.lesson.kind) && this.circuit?.reverse !== inputs.reverse) this.setLesson(this.lesson, inputs, false);
     const previous = this.inputs;
-    this.inputs = inputs;
+    this.inputs = { ...inputs };
     this.result = result;
     if (this.switchBlade) this.switchBlade.rotation.z = inputs.closed ? 0 : 0.7;
     const powered = this.lesson?.kind === 'led' || this.lesson?.kind === 'breadboard' ? result.current > 0 : Math.abs(result.output) > 0 && result.active;
