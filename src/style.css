@@ -283,8 +283,10 @@ dialog::backdrop { background: #20374755; backdrop-filter: blur(3px); }
   .completion-bar { padding: 11px 12px; gap: 9px; flex-direction: column; }
   .completion-bar button { width: 100%; }
   .dock-caption { display: none; }
+  .dock-heading { gap: 12px; }
+  .category-select { flex: 1; min-width: 0; }
   .lesson-arrows { margin-left: auto; }
-  .category-select select { max-width: 185px; font-size: 11px; }
+  .category-select select { width: 100%; max-width: 185px; font-size: 11px; }
   .lesson-dock { padding: 15px 13px; }
   .lesson-strip > div { flex-basis: 118px; }
   .lesson-card { width: 118px; }
