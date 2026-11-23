@@ -4,6 +4,7 @@ import type { Inputs, Lesson } from './lessons';
 import type { Result } from './simulation';
 import { format } from './simulation';
 import { CircuitGeometry, palette, type CircuitConnection } from './circuit-geometry';
+import { frameCircuit } from './framing';
 
 export class Workbench {
   private scene = new THREE.Scene();
@@ -33,7 +34,15 @@ export class Workbench {
   private elapsed = 0;
   private lastTime = 0;
 
-  constructor(private host: HTMLElement, private toggle: () => void, private report: (message: string) => void) {
+  get components(): string[] {
+    const keys = new Set<string>();
+    this.model.traverse(object => {
+      if (typeof object.userData.component === 'string') keys.add(object.userData.component);
+    });
+    return [...keys];
+  }
+
+  constructor(private host: HTMLElement, private toggle: () => void, private report: (message: string) => void, private inspect: (component: string) => void) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
@@ -43,7 +52,7 @@ export class Workbench {
     this.renderer.domElement.setAttribute('aria-hidden', 'true');
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = false;
-    this.controls.minZoom = 0.55;
+    this.controls.minZoom = 0.1;
     this.controls.maxZoom = 2.8;
     this.controls.maxPolarAngle = Math.PI / 2 - 0.08;
     this.controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
@@ -89,7 +98,9 @@ export class Workbench {
     const bounds = this.renderer.domElement.getBoundingClientRect();
     this.raycaster.setFromCamera(new THREE.Vector2((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1), this.camera);
     const hits = this.raycaster.intersectObjects(this.model.children, true);
-    if (hits.some(hit => hit.object.userData.toggle)) this.toggle();
+    const hit = hits.find(hit => hit.object.userData.toggle || typeof hit.object.userData.component === 'string');
+    if (hit?.object.userData.toggle) this.toggle();
+    else if (hit) this.inspect(hit.object.userData.component as string);
   };
   private material(color: number, metalness = 0): THREE.MeshStandardMaterial {
     return new THREE.MeshStandardMaterial({ color, roughness: metalness ? 0.38 : 0.8, metalness });
@@ -174,6 +185,8 @@ export class Workbench {
     }
     for (const request of this.circuit.labels) {
       const label = this.label(request.text, request.position, request.width);
+      if (request.component) label.userData.component = request.component;
+      if (request.component === 'switch') label.userData.toggle = true;
       if (request.role === 'capacitor') this.capacitorLabels.push(label);
       if (request.role === 'display') this.display = label;
     }
@@ -236,27 +249,25 @@ export class Workbench {
     this.camera.zoom = Math.min(this.camera.zoom, Math.max(0.55, ratio / 1.2));
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+    if (this.circuit) this.fitView();
+  }
+  private fitView(): void {
+    const direction = this.top ? new THREE.Vector3(0.001, 14, 0) : new THREE.Vector3(7.7, 8.4, 10.5);
+    this.controls.target.copy(frameCircuit(this.camera, this.model, this.host.clientWidth, this.host.clientHeight, direction));
+    this.controls.update();
   }
   home(): void {
     this.top = false;
-    this.camera.position.set(7.7, 8.8, 11);
-    this.controls.target.set(0, 0.4, 0.5);
-    const aspect = this.host.clientWidth / Math.max(1, this.host.clientHeight);
-    this.camera.zoom = Math.max(0.55, Math.min(1.2, aspect / 1.2));
-    this.camera.up.set(0, 1, 0);
-    this.camera.updateProjectionMatrix();
-    this.controls.update();
+    this.fitView();
   }
   action(action: string): void {
     if (action === 'reset') return this.home();
     if (action === 'top') {
       this.top = !this.top;
       if (!this.top) return this.home();
-      this.camera.position.set(0.001, 14, 0.501);
-      this.controls.target.set(0, 0, 0.5);
-      this.controls.update();
+      this.fitView();
     } else if (action === 'in' || action === 'out') {
-      this.camera.zoom = THREE.MathUtils.clamp(this.camera.zoom * (action === 'in' ? 1.15 : 1 / 1.15), 0.55, 2.8);
+      this.camera.zoom = THREE.MathUtils.clamp(this.camera.zoom * (action === 'in' ? 1.15 : 1 / 1.15), 0.1, 2.8);
       this.camera.updateProjectionMatrix();
     } else if (action === 'left' || action === 'right') {
       const offset = this.camera.position.clone().sub(this.controls.target);

@@ -7,6 +7,7 @@ export interface ComponentLabel {
   position: [number, number, number];
   width: number;
   role?: 'capacitor' | 'display';
+  component?: string;
 }
 export interface CircuitPart {
   kind: string;
@@ -52,8 +53,8 @@ export class CircuitGeometry extends THREE.Group {
   private cylinder(radius: number, height: number, color: number, position: [number, number, number], metalness = 0): THREE.Mesh {
     return this.mesh(new THREE.CylinderGeometry(radius, radius, height, 40), color, position, metalness);
   }
-  private label(text: string, position: [number, number, number], width = 1.8, role?: ComponentLabel['role']): void {
-    this.labels.push({ text, position, width, role });
+  private label(text: string, position: [number, number, number], width = 1.8, role?: ComponentLabel['role'], component?: string): void {
+    this.labels.push({ text, position, width, role, component });
   }
   private terminal(mesh: THREE.Mesh, position: [number, number, number], direction: [number, number, number]): THREE.Object3D {
     const terminal = new THREE.Object3D();
@@ -64,6 +65,7 @@ export class CircuitGeometry extends THREE.Group {
   }
   private part(kind: string, pins: THREE.Object3D[]): CircuitPart {
     const part = { kind, a: pins[0], b: pins[1], pins };
+    for (const pin of pins) if (pin.parent) pin.parent.userData.component = kind === 'led' || kind === 'diode' ? 'diode' : kind === 'mosfet' ? 'transistor' : kind === 'generator' ? 'battery' : kind;
     this.parts.push(part);
     return part;
   }
@@ -104,11 +106,13 @@ export class CircuitGeometry extends THREE.Group {
   }
 
   private battery(x: number, z: number): CircuitPart {
-    this.batteryBodies.push(this.cylinder(0.58, 1.65, palette.lime, [x, 0.86, z]));
+    const body = this.cylinder(0.58, 1.65, palette.lime, [x, 0.86, z]);
+    body.userData.component = 'battery';
+    this.batteryBodies.push(body);
     this.cylinder(0.59, 0.16, palette.brass, [x, 1.7, z], 0.6);
     const positive = this.cylinder(0.24, 0.16, palette.ink, [x, 1.84, z], 0.4);
     const negative = this.cylinder(0.59, 0.12, palette.ink, [x, 0.08, z]);
-    this.label('POWER SOURCE', [x, 2.4, z], 1.95);
+    this.label('POWER SOURCE', [x, 2.4, z], 1.95, undefined, 'battery');
     return this.part('battery', [this.terminal(positive, [0, 0.08, 0], [0, 1, 0]), this.terminal(negative, [0, 0, 0.59], [0, 0, 1])]);
   }
   private bulb(x: number, z: number, led = false): CircuitPart {
@@ -116,13 +120,25 @@ export class CircuitGeometry extends THREE.Group {
     this.cylinder(0.4, 0.22, palette.brass, [x, 0.36, z], 0.5);
     this.cylinder(0.27, 0.45, palette.ink, [x, 0.64, z]);
     for (let y = 0.5; y < 0.83; y += 0.09) this.cylinder(0.3, 0.025, palette.brass, [x, y, z], 0.5);
-    this.lights.push(this.mesh(led ? new THREE.CapsuleGeometry(0.24, 0.25, 8, 24) : new THREE.SphereGeometry(0.48, 32, 24), 0xffdda1, [x, 1.16, z]));
-    this.label(led ? 'LED' : 'LAMP', [x, 1.95, z], 1.25);
+    const globe = this.mesh(led ? new THREE.CapsuleGeometry(0.24, 0.25, 8, 24) : new THREE.SphereGeometry(0.48, 32, 24), 0xffdda1, [x, 1.16, z]);
+    globe.userData.component = led ? 'diode' : 'lamp';
+    this.lights.push(globe);
+    this.label(led ? 'LED' : 'LAMP', [x, 1.95, z], 1.25, undefined, led ? 'diode' : 'lamp');
     const pins = [-0.52, 0.52].map(offset => {
       const post = this.cylinder(0.085, 0.16, palette.brass, [x + offset, 0.31, z], 0.6);
       return this.terminal(post, [0, 0.08, 0], [0, 1, 0]);
     });
     return this.part(led ? 'led' : 'lamp', pins);
+  }
+  private generator(x: number, z: number): CircuitPart {
+    const body = this.cylinder(0.65, 1.2, palette.teal, [x, 0.7, z]);
+    body.userData.component = 'battery';
+    this.cylinder(0.66, 0.14, palette.brass, [x, 1.32, z], 0.5);
+    const sine = new THREE.CatmullRomCurve3(Array.from({ length: 25 }, (_, index) => new THREE.Vector3(x - 0.44 + index * 0.88 / 24, 0.7 + Math.sin(index / 24 * Math.PI * 2) * 0.15, z + 0.65)));
+    this.mesh(new THREE.TubeGeometry(sine, 40, 0.025, 8, false), palette.paper, [0, 0, 0]).userData.component = 'battery';
+    const pins = [-0.28, 0.28].map(offset => this.terminal(this.cylinder(0.09, 0.15, palette.brass, [x + offset, 1.43, z], 0.6), [0, 0.075, 0], [0, 1, 0]));
+    this.label('AC SOURCE', [x, 2, z], 1.9, undefined, 'battery');
+    return this.part('generator', pins);
   }
   private knife(x: number, z: number): CircuitPart {
     this.box(1.9, 0.22, 1.1, palette.wood, [x, 0.12, z]);
@@ -138,51 +154,55 @@ export class CircuitGeometry extends THREE.Group {
     this.add(this.switchBlade);
     this.box(1.35, 0.075, 0.22, palette.brass, [0.62, 0, 0], this.switchBlade).userData.toggle = true;
     this.box(0.42, 0.16, 0.37, palette.teal, [1.14, 0.05, 0], this.switchBlade).userData.toggle = true;
-    this.label('CLICK TO SWITCH', [x, 1.6, z], 2.15);
+    this.label('CLICK TO SWITCH', [x, 1.6, z], 2.15, undefined, 'switch');
     return this.part('switch', pins);
   }
   private resistor(x: number, z: number, label = 'R1'): CircuitPart {
-    this.cylinder(0.19, 0.95, 0xe3c7a1, [x, 0.5, z]).rotation.z = Math.PI / 2;
+    const body = this.cylinder(0.19, 0.95, 0xe3c7a1, [x, 0.5, z]);
+    body.rotation.z = Math.PI / 2;
+    body.userData.component = 'resistor';
     const colors = [0x73412e, 0x263b44, 0xbf5847, palette.brass];
     for (let index = 0; index < 4; index++) this.cylinder(0.195, 0.08, colors[index], [x + (index - 1.5) * 0.19, 0.5, z]).rotation.z = Math.PI / 2;
     const lead = this.cylinder(0.035, 1.8, palette.brass, [x, 0.5, z], 0.6);
     lead.rotation.z = Math.PI / 2;
-    this.label(label, [x, 1.17, z], 1.4);
+    this.label(label, [x, 1.17, z], 1.4, undefined, 'resistor');
     return this.axial('resistor', lead);
   }
   private capacitor(x: number, z: number, text = 'C1'): CircuitPart {
-    this.cylinder(0.36, 0.95, 0x669eac, [x, 0.77, z]);
+    this.cylinder(0.36, 0.95, 0x669eac, [x, 0.77, z]).userData.component = 'capacitor';
     this.cylinder(0.37, 0.04, 0xc6d5ce, [x, 1.25, z], 0.6);
     const pins = [-0.16, 0.16].map(offset => this.leg(this.cylinder(0.025, 0.32, palette.brass, [x + offset, 0.17, z])));
     this.box(0.07, 0.75, 0.025, 0xcce3dd, [x + 0.16, 0.77, z + 0.34]);
-    this.label(text, [x, 1.7, z], 1.4, 'capacitor');
+    this.label(text, [x, 1.7, z], 1.4, 'capacitor', 'capacitor');
     return this.part('capacitor', pins);
   }
   private chip(x: number, z: number, name: string): CircuitPart {
-    this.box(1.7, 0.36, 0.95, palette.ink, [x, 0.55, z]);
+    this.box(1.7, 0.36, 0.95, palette.ink, [x, 0.55, z]).userData.component = 'chip';
     const pins: THREE.Object3D[] = [];
     for (let index = 0; index < 4; index++) for (const side of [-1, 1]) {
       const pin = this.box(0.09, 0.25, 0.5, palette.brass, [x - 0.59 + index * 0.4, 0.36, z + side * 0.66]);
       pins.push(this.terminal(pin, [0, 0, side * 0.25], [0, 0, side]));
     }
-    this.label(name, [x, 1.23, z], 1.9);
+    this.label(name, [x, 1.23, z], 1.9, undefined, 'chip');
     return this.part('chip', pins);
   }
   private transistor(x: number, z: number, mosfet: boolean): CircuitPart {
     if (mosfet) {
-      this.box(0.95, 1.2, 0.26, palette.ink, [x, 1, z]);
+      this.box(0.95, 1.2, 0.26, palette.ink, [x, 1, z]).userData.component = 'transistor';
       this.box(0.95, 0.36, 0.25, 0xc8c8b6, [x, 1.72, z]);
-    } else this.cylinder(0.39, 0.7, palette.ink, [x, 1, z]);
+    } else this.cylinder(0.39, 0.7, palette.ink, [x, 1, z]).userData.component = 'transistor';
     const pins = [-0.26, 0.26, 0].map(offset => this.leg(this.cylinder(0.035, 0.65, palette.brass, [x + offset, 0.35, z])));
-    this.label(mosfet ? 'MOSFET' : 'NPN', [x, 2.2, z], 1.5);
+    this.label(mosfet ? 'MOSFET' : 'NPN', [x, 2.2, z], 1.5, undefined, 'transistor');
     return this.part(mosfet ? 'mosfet' : 'transistor', pins);
   }
   private diode(x: number, z: number, text = 'DIODE'): CircuitPart {
-    this.cylinder(0.18, 0.7, palette.ink, [x, 0.5, z]).rotation.z = Math.PI / 2;
+    const body = this.cylinder(0.18, 0.7, palette.ink, [x, 0.5, z]);
+    body.rotation.z = Math.PI / 2;
+    body.userData.component = 'diode';
     this.cylinder(0.184, 0.09, 0xd1d4c8, [x + 0.2, 0.5, z]).rotation.z = Math.PI / 2;
     const lead = this.cylinder(0.035, 1.1, palette.brass, [x, 0.5, z], 0.6);
     lead.rotation.z = Math.PI / 2;
-    this.label(text, [x, 1.2, z], 1.9);
+    this.label(text, [x, 1.2, z], 1.9, undefined, 'diode');
     return this.axial('diode', lead);
   }
   private breadboard(): { resistor: CircuitPart; led: CircuitPart } {
@@ -196,7 +216,7 @@ export class CircuitGeometry extends THREE.Group {
 
   private build(lesson: Lesson, inputs: Inputs): void {
     const kind = lesson.kind;
-    const source = this.battery(-3.1, 0.1);
+    const source = kind === 'ac' && inputs.gate === 'AC' ? this.generator(-3.1, 0.1) : this.battery(-3.1, 0.1);
     if (kind === 'cells') {
       const cells = [source];
       for (let index = 1; index < inputs.secondary; index++) cells.push(this.battery(-3.1 + index * 1.3, -1.2));
@@ -275,17 +295,17 @@ export class CircuitGeometry extends THREE.Group {
       }
       this.label('OUTPUT', [2.9, 2.7, -0.2], 1.7, 'display');
     } else if (kind === 'sensor') {
-      this.cylinder(0.45, 0.18, palette.wood, [0, 0.7, 0]);
+      this.cylinder(0.45, 0.18, palette.wood, [0, 0.7, 0]).userData.component = 'sensor';
       for (let index = 0; index < 5; index++) this.box(0.62, 0.025, 0.028, palette.red, [0, 0.8, -0.25 + index * 0.12]);
       const sensor = this.part('sensor', [-1, 1].map(side => this.leg(this.cylinder(0.025, 0.65, palette.brass, [side * 0.23, 0.3, 0]))));
-      this.label(inputs.gate.toUpperCase(), [0, 1.5, 0], 1.8);
+      this.label(inputs.gate.toUpperCase(), [0, 1.5, 0], 1.8, undefined, 'sensor');
       const resistor = this.resistor(0.2, 1.6, 'DIVIDER');
       this.connect(source.a, sensor.a, palette.red, -1.8);
       this.connect(sensor.b, resistor.a, palette.brass);
       this.connect(resistor.b, source.b, palette.teal, 2.6);
       this.label('SENSOR OUTPUT', [2.5, 1, 0], 2.1, 'display');
     } else if (kind === 'meter' || kind === 'ac') {
-      this.box(1.5, 0.4, 2, palette.teal, [1.5, 0.25, 0]);
+      this.box(1.5, 0.4, 2, palette.teal, [1.5, 0.25, 0]).userData.component = 'meter';
       this.cylinder(0.34, 0.12, palette.ink, [1.5, 0.55, 0.4]);
       const meter = this.part('meter', [-0.5, 0.5].map(offset => this.terminal(this.cylinder(0.075, 0.1, palette.brass, [1.5 + offset, 0.5, -0.55]), [0, 0.05, 0], [0, 1, 0])));
       const resistor = this.resistor(-0.5, 1.6);
@@ -298,7 +318,7 @@ export class CircuitGeometry extends THREE.Group {
         this.connect(resistor.b, meter.b);
       }
       this.connect(resistor.b, source.b, palette.teal, 2.6);
-      this.label('READING', [1.5, 1.35, -0.1], 2, 'display');
+      this.label('READING', [1.5, 1.35, -0.1], 2, 'display', 'meter');
     } else if (['series', 'parallel', 'divider', 'kirchhoff', 'pot'].includes(kind)) {
       const first = this.resistor(-0.3, -0.5, 'R1');
       const second = this.resistor(kind === 'parallel' ? -0.3 : 1.65, kind === 'parallel' ? 1.5 : -0.5, 'R2');

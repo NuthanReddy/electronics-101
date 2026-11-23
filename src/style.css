@@ -299,3 +299,15 @@ dialog::backdrop { background: #20374755; backdrop-filter: blur(3px); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+.stage-wrap { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.stage { position: relative; inset: auto; min-height: 0; height: 100%; }
+.stage-heading { position: relative; top: auto; left: auto; padding: 12px 23px 0; }
+.stage-heading h2 { margin: 6px 0; }
+.stage-note { position: static; margin: 12px 0 4px; }
+.bench-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 24px; padding: 8px 18px; }
+.stage-readings { position: static; flex-shrink: 0; }
+.camera-area { position: static; transform: none; }
+.schematic [data-inspect], .schematic [data-cycle] { cursor: pointer; }
+.schematic [data-inspect]:hover, .schematic [data-cycle]:hover { stroke: #b39753; }
+.schematic [data-inspect]:focus-visible, .schematic [data-cycle]:focus-visible { outline: 2px solid #268e87; outline-offset: 3px; }
+.schematic .part-hit { fill: none; stroke: transparent; stroke-width: 25px; }

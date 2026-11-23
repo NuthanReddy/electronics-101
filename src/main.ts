@@ -50,10 +50,9 @@ app.innerHTML = `
     </header>
     <main class="main">
       <section class="stage-wrap" aria-label="Interactive experiment">
-        <div class="stage-heading"><span class="eyebrow">THE WORKBENCH</span><h2 id="stage-title">Open & closed circuits</h2><p>Curiosity is the only prerequisite.</p></div>
-        <div id="stage" class="stage" tabindex="0" role="region" aria-label="3D circuit workbench. Drag to pan, right drag to rotate, wheel to zoom. WASD pans, Q and E rotate, Space toggles the circuit."></div>
-        <div class="stage-note"><span class="live-dot"></span><span id="stage-status">Current is flowing</span></div>
-        <div class="stage-readings"><span><small>SUPPLY</small><strong id="supply-value">3 V</strong></span><span><small>CURRENT</small><strong id="current-value">100 mA</strong></span><span><small>OUTPUT</small><strong id="output-value">3 V</strong></span></div>
+        <div class="stage-heading"><span class="eyebrow">THE WORKBENCH</span><h2 id="stage-title">Open & closed circuits</h2><div class="stage-note"><span class="live-dot"></span><span id="stage-status">Current is flowing</span></div></div>
+        <div id="stage" class="stage" tabindex="0" role="region" aria-label="3D circuit workbench. Click components to inspect them. Drag to pan, right drag to rotate, wheel to zoom. WASD pans, Q and E rotate, Space toggles the circuit."></div>
+        <div class="bench-footer"><div class="stage-readings"><span><small id="supply-label">SUPPLY</small><strong id="supply-value">3 V</strong></span><span><small id="current-label">CURRENT</small><strong id="current-value">100 mA</strong></span><span><small id="output-label">OUTPUT</small><strong id="output-value">3 V</strong></span></div>
         <div class="camera-area"><div class="camera-toolbar" role="toolbar" aria-label="Camera controls">
           <button data-camera="left" aria-label="Rotate left" title="Rotate left (Q)">${icon('left')}</button>
           <button data-camera="right" aria-label="Rotate right" title="Rotate right (E)">${icon('right')}</button>
@@ -61,7 +60,7 @@ app.innerHTML = `
           <button data-camera="in" aria-label="Zoom in" title="Zoom in">${icon('plus')}</button><span></span>
           <button data-camera="reset" aria-label="Reset camera" title="Reset camera (R)">${icon('reset')}</button>
           <button data-camera="top" aria-label="Toggle top view" title="Top view">${icon('top')}</button>
-        </div><p><kbd>W A S D</kbd> pan <i></i><kbd>Q E</kbd> rotate <i></i>scroll to zoom</p></div>
+        </div><p><kbd>W A S D</kbd> pan <i></i><kbd>Q E</kbd> rotate <i></i>scroll to zoom</p></div></div>
       </section>
       <aside id="lesson-panel" class="lesson-panel" aria-label="Lesson information">
         <div class="tabs" role="tablist" aria-label="Lesson views">
@@ -94,11 +93,11 @@ catch (error) { console.error('Unable to load saved lesson progress', error); sa
 let lesson = lessons.find(item => item.id === location.hash.slice(1)) ?? lessons.find(item => item.id === saved.lessonId) ?? lessons[0];
 let inputs = initialInputs(lesson.kind, lesson.defaults);
 let result = simulate(lesson.kind, inputs);
-let tab = 'overview';
+let tab = 'circuit';
 let component = '';
 let workbench: Workbench | undefined;
 let audio: AudioContext | undefined;
-try { workbench = new Workbench($('#stage'), () => toggleInput('closed'), notify); }
+try { workbench = new Workbench($('#stage'), () => toggleInput('closed'), notify, inspectComponent); }
 catch (error) {
   console.error('Unable to initialize WebGL workbench', error);
   $('#stage').innerHTML = '<div class="graphics-error"><h3>3D graphics are unavailable</h3><p>Enable hardware acceleration and reload. You can still explore every lesson, control and circuit diagram.</p></div>';
@@ -125,17 +124,20 @@ function chirp(): void {
   } catch (error) { console.error('Unable to play switch sound', error); notify('Switch sound is unavailable in this browser.'); }
 }
 const componentInfo: Record<string, { title: string; text: string }> = {
-  battery: { title: 'Battery / supply', text: 'Establishes a potential difference between its terminals. The workbench treats it as an ideal voltage source without internal resistance or capacity limits.' },
+  battery: { title: 'Voltage source', text: 'Establishes a potential difference between its terminals. A battery supplies DC; an AC generator reverses voltage periodically. The workbench uses ideal sources without internal resistance or capacity limits.' },
+  meter: { title: 'Meter / readout', text: 'Shows the selected circuit measurement. The AC/DC experiment displays RMS voltage for AC and steady voltage for DC. Measurement probes and internal meter circuitry are idealized.' },
   resistor: { title: 'Resistor', text: 'Limits current, sets divider ratios and dissipates heat. The brown-black-red-gold model illustrates a nominal 1 kilohm resistor; live values are set by the controls, not the painted bands.' },
-  lamp: { title: 'Lamp / output indicator', text: 'Makes the circuit state visible. Lamp brightness is illustrative; the simplified lamp uses a fixed resistance rather than a temperature-dependent filament model.' },
+  lamp: { title: 'Lamp / output indicator', text: 'Makes the circuit state visible. The lamp experiment uses the selected lamp resistance. In other lessons the lamp is an output indicator, not an additional modeled resistance. Brightness is illustrative.' },
   switch: { title: 'Switch / button', text: 'Opens or closes a path. You can click a knife switch in 3D or use the control below. Button states remain latched here so you can inspect them.' },
   capacitor: { title: 'Capacitor', text: 'Stores charge and responds to changing voltage. Capacitance controls are in microfarads; calculations convert them to farads.' },
-  diode: { title: 'Diode / LED', text: 'Allows forward conduction. The simplified silicon diode drops 0.7 V; the LED drops 2 V. Reverse breakdown, temperature and parasitics are not modeled.' },
+  diode: { title: 'Diode / LED', text: 'Allows forward conduction. Diode and LED experiments use fixed drops of 0.7 V and 2 V respectively. LEDs in other lessons are output indicators, not additional modeled loads. Reverse breakdown, temperature and parasitics are not modeled.' },
   transistor: { title: 'Transistor', text: 'Controls a load from a separate drive signal. The NPN model uses gain 100 and a 0.2 V saturation drop; the MOSFET has an ideal 2 V threshold and 0.5 ohm on-resistance.' },
   chip: { title: 'Integrated circuit', text: 'Combines many electronic functions. This model illustrates a timer, ideal amplifier, comparator or Boolean gate; it is not a physical pin-by-pin wiring guide.' },
   sensor: { title: 'Sensor', text: 'Turns a physical property into an electrical signal. LDR and pressure curves are illustrative; the thermistor uses an explicitly defined beta model.' },
 };
 function componentKeys(item: Lesson): string[] {
+  const actual = workbench?.components.filter(key => componentInfo[key]);
+  if (actual?.length) return actual;
   const kind = item.kind;
   const special = ['capacitor', 'rc', 'filter'].includes(kind) ? ['capacitor']
     : ['led', 'diode', 'rectifier', 'zener', 'breadboard'].includes(kind) ? ['diode']
@@ -186,7 +188,7 @@ function renderProgress(): void {
   $('#lesson-number').textContent = `LESSON ${String(lessons.indexOf(lesson) + 1).padStart(2, '0')} / 68`;
 }
 function renderControls(): void {
-  $('#controls').innerHTML = controls(lesson.kind).map(control => {
+  $('#controls').innerHTML = controls(lesson.kind, inputs).map(control => {
     const value = inputs[control.key];
     if (control.options) return `<label class="select-control"><span>${control.label}</span><select data-input="${control.key}">${control.options.map(option => `<option ${value === option ? 'selected' : ''} value="${option}">${option}</option>`).join('')}</select></label>`;
     if (typeof value === 'boolean') return `<button class="toggle-control ${value ? 'on' : ''}" data-toggle="${control.key}" aria-pressed="${value}"><span>${control.label}</span><span class="toggle-state">${value ? 'ON' : 'OFF'}<i></i></span></button>`;
@@ -207,14 +209,14 @@ function renderTab(): void {
   } else if (tab === 'components') {
     const keys = componentKeys(lesson);
     if (!keys.includes(component)) component = keys[0];
-    content.innerHTML = `${heading}<p class="small-copy">Select a component to get to know it.</p><div class="component-list">${keys.map(key => `<button data-component="${key}" class="${component === key ? 'active' : ''}">${icon(key === 'battery' ? 'bolt' : key === 'chip' ? 'chip' : 'settings', 19)}<span>${componentInfo[key].title}</span>${icon('right', 15)}</button>`).join('')}</div><div class="component-detail"><h3>${componentInfo[component].title}</h3><p>${componentInfo[component].text}</p></div>`;
+    content.innerHTML = `${heading}<p class="small-copy">Select a component to get to know it.</p><div class="component-list">${keys.map(key => `<button data-component="${key}" aria-pressed="${component === key}" class="${component === key ? 'active' : ''}">${icon(key === 'battery' ? 'bolt' : key === 'chip' ? 'chip' : 'settings', 19)}<span>${componentInfo[key].title}</span>${icon('right', 15)}</button>`).join('')}</div><div class="component-detail"><h3>${componentInfo[component].title}</h3><p>${componentInfo[component].text}</p></div>`;
   } else if (tab === 'circuit') {
-    content.innerHTML = `${heading}<p class="small-copy">Follow the path. Teal indicates an energized experiment.</p><div id="schematic-holder">${schematic(lesson.kind, inputs, result.active)}</div><p class="diagram-note">Conceptual diagram and 3D arrangement, not a pin-by-pin construction guide.</p>${['ac', 'rectifier', 'rc', 'timer'].includes(lesson.kind) ? waveform(lesson.kind, inputs) : ''}<div class="circuit-state">${icon('bolt', 17)}<span>${result.status}</span></div>`;
+    content.innerHTML = `${heading}<p class="small-copy">Click a highlighted part to adjust it. Teal indicates an energized experiment.</p><div id="schematic-holder">${schematic(lesson.kind, inputs, result.active)}</div><p class="diagram-note">Conceptual diagram and 3D arrangement, not a pin-by-pin construction guide.</p>${['ac', 'rectifier', 'rc', 'timer'].includes(lesson.kind) ? waveform(lesson.kind, inputs) : ''}<div class="circuit-state">${icon('bolt', 17)}<span>${result.status}</span></div>`;
   } else {
     content.innerHTML = `${heading}<p class="small-copy">Numbers that move with your experiment.</p><div class="formula">${result.formula}</div><dl class="math-readings">${[
-      { label: 'Supply voltage', value: inputs.voltage, unit: 'V' },
-      { label: lesson.kind === 'ac' ? 'RMS current' : lesson.kind === 'filter' ? 'Peak RC path current' : lesson.kind === 'rectifier' ? 'Average load current' : 'Circuit / load current', value: result.current, unit: 'A' },
-      { label: lesson.kind === 'ac' ? 'RMS output voltage' : ['filter', 'rectifier'].includes(lesson.kind) ? 'Peak output voltage' : 'Output voltage', value: result.output, unit: 'V' },
+      { label: lesson.kind === 'ac' && inputs.gate === 'AC' ? 'AC peak voltage' : lesson.kind === 'cells' ? 'Voltage per cell' : 'Supply voltage', value: inputs.voltage, unit: 'V' },
+      { label: lesson.kind === 'ac' && inputs.gate === 'AC' ? 'RMS current' : lesson.kind === 'filter' ? 'Peak RC path current' : lesson.kind === 'rectifier' ? 'Average load current' : 'Circuit / load current', value: result.current, unit: 'A' },
+      { label: lesson.kind === 'ac' && inputs.gate === 'AC' ? 'RMS output voltage' : ['filter', 'rectifier'].includes(lesson.kind) ? 'Peak output voltage' : 'Output voltage', value: result.output, unit: 'V' },
       ...result.readings,
       { label: lesson.kind === 'filter' ? 'Average resistor power' : lesson.kind === 'rc' && inputs.gate === 'discharge' ? 'Discharge resistor power' : ['opamp', 'comparator', 'sensor', 'capacitor'].includes(lesson.kind) ? 'Modeled source power (excludes IC quiescent power)' : 'Modeled source power', value: result.power, unit: 'W' },
     ].map(reading => `<div><dt>${reading.label}</dt><dd>${format(reading.value, reading.unit)}</dd></div>`).join('')}</dl><p class="math-assumptions">Ideal sources and simplified component behavior. For amplifiers and digital ICs, supply and quiescent currents are not modeled.</p>${lesson.kind === 'logic' ? `<table class="truth-table"><caption>${inputs.gate} truth table</caption><thead><tr><th>A</th><th>B</th><th>OUT</th></tr></thead><tbody>${[0, 1].flatMap(a => [0, 1].map(b => `<tr><td>${a}</td><td>${b}</td><td>${Number(simulate('logic', { ...inputs, closed: Boolean(a), reverse: Boolean(b) }).output > 0)}</td></tr>`)).join('')}</tbody></table>` : ''}`;
@@ -222,6 +224,9 @@ function renderTab(): void {
 }
 function updateReadings(): void {
   result = simulate(lesson.kind, inputs);
+  $('#supply-label').textContent = lesson.kind === 'cells' ? 'PER CELL' : lesson.kind === 'ac' && inputs.gate === 'AC' ? 'AC PEAK' : 'SUPPLY';
+  $('#current-label').textContent = lesson.kind === 'ac' && inputs.gate === 'AC' ? 'RMS CURRENT' : 'CURRENT';
+  $('#output-label').textContent = lesson.kind === 'ac' && inputs.gate === 'AC' ? 'RMS OUTPUT' : lesson.kind === 'cells' ? 'PACK' : 'OUTPUT';
   $('#supply-value').textContent = format(inputs.voltage, 'V');
   $('#current-value').textContent = format(result.current, 'A');
   $('#output-value').textContent = format(result.output, 'V');
@@ -230,10 +235,14 @@ function updateReadings(): void {
   workbench?.update(inputs, result);
   if (tab === 'maths' || tab === 'circuit') renderTab();
 }
-function selectLesson(next: Lesson): void {
+function selectLesson(next: Lesson, replaceHistory = false): void {
+  const restoreCardFocus = document.activeElement instanceof Element && document.activeElement.matches('.lesson-card');
   lesson = next;
   inputs = initialInputs(lesson.kind, lesson.defaults);
-  history.replaceState(null, '', `#${lesson.id}`);
+  if (location.hash !== `#${lesson.id}`) {
+    if (replaceHistory) history.replaceState(null, '', `#${lesson.id}`);
+    else history.pushState(null, '', `#${lesson.id}`);
+  }
   persist();
   $('#stage-title').textContent = lesson.title;
   workbench?.setLesson(lesson, inputs);
@@ -243,6 +252,27 @@ function selectLesson(next: Lesson): void {
   renderTab();
   renderStrip();
   renderProgress();
+  if (restoreCardFocus) $('#lesson-strip .active').focus({ preventScroll: true });
+}
+function inspectComponent(key: string): void {
+  if (!componentKeys(lesson).includes(key)) return;
+  component = key;
+  tab = 'components';
+  renderTab();
+  $(`[data-component="${key}"]`).focus({ preventScroll: true });
+}
+function inspectControl(key: string): void {
+  const control = document.querySelector<HTMLElement>(`#controls [data-input="${key}"], #controls [data-toggle="${key}"]`);
+  if (control) control.focus();
+}
+function cycleMode(key: string): void {
+  const control = controls(lesson.kind, inputs).find(control => control.key === key);
+  if (!control?.options || key !== 'gate') return;
+  const index = control.options.indexOf(inputs.gate);
+  const select = $<HTMLSelectElement>('#controls [data-input="gate"]');
+  select.value = control.options[(index + 1) % control.options.length];
+  select.dispatchEvent(new Event('input', { bubbles: true }));
+  document.querySelector<SVGElement>(`[data-cycle="${key}"]`)?.focus();
 }
 function toggleInput(key: 'closed' | 'reverse'): void {
   if (!controls(lesson.kind).some(control => control.key === key)) {
@@ -251,12 +281,12 @@ function toggleInput(key: 'closed' | 'reverse'): void {
   }
   const focus = document.activeElement;
   const restoreControlFocus = focus instanceof HTMLElement && focus.dataset.toggle === key && !focus.classList.contains('schematic-switch');
-  const restoreSchematicFocus = focus instanceof Element && focus.matches('.schematic-switch');
+  const restoreSchematicFocus = focus instanceof SVGElement && focus.dataset.toggle === key;
   inputs[key] = !inputs[key];
   renderControls();
   updateReadings();
   if (restoreControlFocus) $(`#controls [data-toggle="${key}"]`).focus();
-  if (restoreSchematicFocus && tab === 'circuit') $('.schematic-switch').focus();
+  if (restoreSchematicFocus && tab === 'circuit') $(`#schematic-holder [data-toggle="${key}"]`).focus();
   chirp();
 }
 function openDialog(title: string, body: string): void {
@@ -300,7 +330,7 @@ function handleAction(action: string): void {
       $('[data-action="expand"]').setAttribute('aria-label', expanded ? 'Collapse navigation' : 'Expand navigation');
       break;
     }
-    case 'home': selectLesson(lessons[0]); tab = 'overview'; renderTab(); break;
+    case 'home': selectLesson(lessons[0]); tab = 'circuit'; renderTab(); break;
     case 'library': library(); break;
     case 'components': tab = 'components'; renderTab(); break;
     case 'settings': settings(); break;
@@ -325,7 +355,7 @@ function handleAction(action: string): void {
 document.addEventListener('click', event => {
   const target = event.target;
   if (!(target instanceof Element)) return;
-  const button = target.closest<HTMLElement>('[data-action], [data-camera], [data-tab], [data-toggle], [data-lesson], [data-component], [data-glossary]');
+  const button = target.closest<HTMLElement>('[data-action], [data-camera], [data-tab], [data-toggle], [data-lesson], [data-component], [data-glossary], [data-inspect], [data-cycle]');
   if (!button) return;
   if (button.dataset.action) handleAction(button.dataset.action);
   if (button.dataset.camera) workbench?.action(button.dataset.camera);
@@ -337,6 +367,8 @@ document.addEventListener('click', event => {
   }
   if (button.dataset.component) { component = button.dataset.component; renderTab(); }
   if (button.dataset.glossary) glossary(button.dataset.glossary === 'es');
+  if (button.dataset.inspect) inspectControl(button.dataset.inspect);
+  if (button.dataset.cycle) cycleMode(button.dataset.cycle);
 });
 document.addEventListener('input', event => {
   const target = event.target;
@@ -360,11 +392,13 @@ document.addEventListener('input', event => {
     workbench?.settings(saved.motion, saved.current);
     return;
   }
-  const control = controls(lesson.kind).find(item => item.key === target.dataset.input);
+  const control = controls(lesson.kind, inputs).find(item => item.key === target.dataset.input);
   if (!control) return;
   if (control.key === 'gate' && control.options?.includes(target.value)) {
     inputs.gate = target.value;
     workbench?.setLesson(lesson, inputs);
+    renderControls();
+    $('#controls [data-input="gate"]').focus({ preventScroll: true });
   } else if (typeof inputs[control.key] === 'number') {
     const value = Number(target.value);
     if (!Number.isFinite(value) || value < (control.min ?? -Infinity) || value > (control.max ?? Infinity)) return;
@@ -378,6 +412,21 @@ document.addEventListener('input', event => {
 });
 document.addEventListener('keydown', event => {
   const target = event.target;
+  if (target instanceof Element && target.matches('[data-inspect], [data-cycle]') && [' ', 'Enter'].includes(event.key)) {
+    event.preventDefault();
+    const element = target as SVGElement;
+    if (element.dataset.inspect) inspectControl(element.dataset.inspect);
+    if (element.dataset.cycle) cycleMode(element.dataset.cycle);
+    return;
+  }
+  if (target instanceof HTMLElement && target.matches('.lesson-card') && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+    event.preventDefault();
+    const cards = [...document.querySelectorAll<HTMLButtonElement>('.lesson-card')];
+    const index = cards.indexOf(target as HTMLButtonElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? cards.length - 1 : Math.max(0, Math.min(cards.length - 1, index + (event.key === 'ArrowRight' ? 1 : -1)));
+    cards[next].focus();
+    return;
+  }
   if (target instanceof HTMLElement && target.hasAttribute('data-tab') && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
     event.preventDefault();
     const tabs = ['overview', 'components', 'circuit', 'maths'];
@@ -387,7 +436,7 @@ document.addEventListener('keydown', event => {
     $(`#tab-${tab}`).focus();
     return;
   }
-  if (target instanceof Element && target.matches('.schematic-switch') && [' ', 'Enter'].includes(event.key)) { event.preventDefault(); toggleInput('closed'); return; }
+  if (target instanceof SVGElement && (target.dataset.toggle === 'closed' || target.dataset.toggle === 'reverse') && [' ', 'Enter'].includes(event.key)) { event.preventDefault(); toggleInput(target.dataset.toggle); return; }
   if (target !== $('#stage')) return;
   const key = event.key.toLowerCase();
   const action = ({ q: 'left', e: 'right', r: 'reset', '+': 'in', '-': 'out', w: 'w', a: 'a', s: 's', d: 'd' } as Record<string, string>)[key];
@@ -396,7 +445,7 @@ document.addEventListener('keydown', event => {
 });
 window.addEventListener('hashchange', () => {
   const next = lessons.find(item => item.id === location.hash.slice(1));
-  if (next) selectLesson(next);
+  if (next) selectLesson(next, true);
 });
 function clock(): void {
   const now = new Date();
@@ -406,5 +455,5 @@ function clock(): void {
 }
 clock();
 window.setInterval(clock, 30000);
-selectLesson(lesson);
+selectLesson(lesson, true);
 window.addEventListener('pagehide', () => { workbench?.dispose(); void audio?.close(); });

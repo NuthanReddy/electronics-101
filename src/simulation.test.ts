@@ -22,6 +22,27 @@ describe('electrical experiments', () => {
     const result = simulate('cells', { ...input(), voltage: 1.5, secondary: 4, resistance: 1000, gate: 'series' });
     expect(result.output).toBe(6);
     expect(result.power).toBeCloseTo(0.036);
+    const parallel = simulate('cells', { ...input(), voltage: 1.5, secondary: 4, resistance: 1000, gate: 'parallel' });
+    expect(parallel.output).toBe(1.5);
+    expect(parallel.current).toBeCloseTo(0.0015);
+    expect(parallel.readings[1].value).toBeCloseTo(parallel.current / 4);
+    expect(parallel.power).toBeCloseTo(0.00225);
+  });
+  it('uses DC voltage or AC RMS voltage consistently for current and power', () => {
+    const x = { ...input(), voltage: 6, resistance: 1000, frequency: 50 };
+    const dc = simulate('ac', { ...x, gate: 'DC' });
+    const ac = simulate('ac', { ...x, gate: 'AC' });
+    expect(dc).toMatchObject({ output: 6, current: 0.006, status: 'Steady DC supply' });
+    expect(dc.power).toBeCloseTo(0.036);
+    expect(dc.readings.some(reading => reading.label === 'Period')).toBe(false);
+    expect(ac.output).toBeCloseTo(6 / Math.SQRT2);
+    expect(ac.current).toBeCloseTo(ac.output / 1000);
+    expect(ac.power).toBeCloseTo(0.018);
+    expect(ac.readings.find(reading => reading.label === 'Period')?.value).toBe(0.02);
+    expect(controls('ac', { ...x, gate: 'DC' }).some(control => control.key === 'frequency')).toBe(false);
+    expect(controls('ac', { ...x, gate: 'AC' }).some(control => control.key === 'frequency')).toBe(true);
+    expect(simulate('ac', { ...x, voltage: 0, gate: 'AC' })).toMatchObject({ output: 0, current: 0, power: 0, active: false });
+    expect(() => simulate('ac', { ...x, gate: 'unknown' })).toThrow('Unknown source type');
   });
   it('limits LED current and blocks reversed and low-voltage junctions', () => {
     const x = { ...input(), voltage: 5, resistance: 300 };

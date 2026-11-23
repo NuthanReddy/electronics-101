@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { CircuitGeometry } from './circuit-geometry';
 import { lessons } from './lessons';
 import { controls, initialInputs } from './simulation';
+import { schematic, waveform } from './diagram';
+import { frameCircuit } from './framing';
 
 const lesson = (id: string) => {
   const found = lessons.find(item => item.id === id);
@@ -17,6 +19,79 @@ function dispose(circuit: CircuitGeometry): void {
     }
   });
 }
+
+  describe('workbench framing and circuit inspector', () => {
+    it('fits component geometry and labels inside desktop and narrow canvases in both camera views', () => {
+      for (const id of ['1-5', '1-6', '1-7', '3-1', '4-2', '8-1']) {
+        const item = lesson(id);
+        const circuit = new CircuitGeometry(item, { ...initialInputs(item.kind, item.defaults), ...(id === '1-5' ? { secondary: 4 } : {}) });
+        for (const request of circuit.labels) {
+          const sprite = new THREE.Sprite(new THREE.SpriteMaterial());
+          sprite.position.set(...request.position);
+          sprite.scale.set(request.width, request.width / 4, 1);
+          circuit.add(sprite);
+        }
+        for (const [width, height] of [[810, 280], [500, 300], [256, 190], [200, 420]]) {
+          for (const direction of [new THREE.Vector3(7.7, 8.4, 10.5), new THREE.Vector3(0.001, 14, 0)]) {
+            const camera = new THREE.OrthographicCamera(-5, 5, 5, -5, 0.1, 100);
+            frameCircuit(camera, circuit, width, height, direction);
+            let horizontal = 0;
+            let vertical = 0;
+            const point = new THREE.Vector3();
+            circuit.traverse(object => {
+              if (object instanceof THREE.Mesh || object instanceof THREE.LineSegments) {
+                const positions = object.geometry.getAttribute('position');
+                for (let index = 0; index < positions.count; index++) {
+                  point.fromBufferAttribute(positions, index).applyMatrix4(object.matrixWorld).project(camera);
+                  horizontal = Math.max(horizontal, Math.abs(point.x));
+                  vertical = Math.max(vertical, Math.abs(point.y));
+                }
+              } else if (object instanceof THREE.Sprite) {
+                object.getWorldPosition(point).project(camera);
+                horizontal = Math.max(horizontal, Math.abs(point.x) + object.scale.x * camera.zoom / (camera.right - camera.left));
+                vertical = Math.max(vertical, Math.abs(point.y) + object.scale.y * camera.zoom / (camera.top - camera.bottom));
+              }
+            });
+            expect(horizontal, `${id} horizontal clipping at ${width}x${height}`).toBeLessThanOrEqual(0.941);
+            expect(vertical, `${id} vertical clipping at ${width}x${height}`).toBeLessThanOrEqual(0.941);
+          }
+        }
+        circuit.traverse(object => { if (object instanceof THREE.Sprite) object.material.dispose(); });
+        dispose(circuit);
+      }
+    });
+    it('draws one series source path or separate parallel branches with the selected cells and pack voltage', () => {
+      const item = lesson('1-5');
+      for (const gate of ['series', 'parallel']) for (const count of [1, 2, 3, 4]) {
+        const x = { ...initialInputs(item.kind, item.defaults), gate, secondary: count, voltage: 1.5 };
+        const svg = schematic(item.kind, x, true);
+        expect(svg.match(/data-cell=/g)).toHaveLength(count);
+        expect(svg.match(/data-source-branch/g)).toHaveLength(gate === 'series' ? 1 : count);
+        expect(svg).toContain(`PACK: ${gate === 'series' ? count * 1.5 : 1.5} V`);
+        expect(svg).toContain('data-cycle="gate"');
+        expect(svg).toContain('data-inspect="secondary"');
+        expect(svg).not.toContain('{{');
+      }
+    });
+    it('changes source geometry, symbol and waveform together between DC and AC', () => {
+      const item = lesson('1-6');
+      for (const gate of ['DC', 'AC']) {
+        const x = { ...initialInputs(item.kind, item.defaults), gate };
+        const circuit = new CircuitGeometry(item, x);
+        expect(circuit.parts[0].kind).toBe(gate === 'DC' ? 'battery' : 'generator');
+        verifyConnections(circuit);
+        expect(schematic(item.kind, x, true)).toContain(`data-source="${gate}"`);
+        const graph = waveform(item.kind, x);
+        const points = [...graph.matchAll(/points="([^"]+)"/g)][1][1].split(' ').map(point => Number(point.split(',')[1]));
+        expect(new Set(points).size === 1).toBe(gate === 'DC');
+        if (gate === 'AC') {
+          expect(Math.min(...points)).toBeLessThan(35);
+          expect(Math.max(...points)).toBeGreaterThan(95);
+        }
+        dispose(circuit);
+      }
+    });
+  });
 function verifyConnections(circuit: CircuitGeometry): void {
   const attached = new Set(circuit.connections.flatMap(connection => [connection.from, connection.to]));
   for (const part of circuit.parts) {

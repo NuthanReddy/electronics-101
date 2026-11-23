@@ -30,7 +30,7 @@ const closed: Control = { key: 'closed', label: 'Circuit switch' };
 const reverse: Control = { key: 'reverse', label: 'Reverse polarity' };
 const mode = (options: string[], label = 'Mode'): Control => ({ key: 'gate', label, options });
 
-export function controls(kind: Kind): Control[] {
+export function controls(kind: Kind, inputs?: Inputs): Control[] {
   switch (kind) {
     case 'switch': return [closed, voltage, { ...resistance, label: 'Lamp resistance', min: 10, max: 1000, step: 10 }];
     case 'conductor': return [closed, voltage, mode(['copper', 'graphite', 'rubber'], 'Material')];
@@ -38,7 +38,7 @@ export function controls(kind: Kind): Control[] {
     case 'series': case 'parallel': case 'kirchhoff': case 'divider': return [voltage, resistance, secondary, closed];
     case 'cells': return [{ ...voltage, label: 'Voltage per cell', max: 3 }, { key: 'secondary', label: 'Number of cells', min: 1, max: 4, step: 1 }, mode(['series', 'parallel']), resistance];
     case 'pot': return [voltage, { ...signal, label: 'Wiper position', unit: '%', max: 100, step: 1 }, resistance];
-    case 'ac': return [{ ...voltage, label: 'Peak voltage' }, frequency, resistance];
+    case 'ac': return [mode(['DC', 'AC'], 'Source type'), { ...voltage, label: inputs?.gate === 'AC' ? 'AC peak voltage' : 'DC voltage' }, ...(inputs?.gate === 'AC' ? [frequency] : []), resistance];
     case 'breadboard': return [voltage, resistance, closed];
     case 'meter': return [mode(['voltage', 'current', 'resistance'], 'Meter setting'), voltage, resistance, closed];
     case 'led': case 'diode': return [closed, reverse, voltage, resistance];
@@ -135,12 +135,13 @@ export function simulate(kind: Kind, x: Inputs): Result {
       add('Current per cell', x.gate === 'series' ? current : current / r2, 'A');
       break;
     case 'ac':
-      output = v / Math.SQRT2;
+      if (x.gate !== 'AC' && x.gate !== 'DC') throw new Error(`Unknown source type: ${x.gate}`);
+      output = x.gate === 'DC' ? v : v / Math.SQRT2;
       current = output / r;
-      formula = 'Vrms = Vpeak / sqrt(2); Irms = Vrms / R';
+      formula = x.gate === 'DC' ? 'Vrms = VDC; IDC = VDC / R' : 'Vrms = Vpeak / sqrt(2); Irms = Vrms / R';
       add('RMS voltage', output, 'V');
-      add('Period', 1 / x.frequency, 's');
-      status = 'Alternating sine wave';
+      if (x.gate === 'AC') add('Period', 1 / x.frequency, 's');
+      status = x.gate === 'DC' ? 'Steady DC supply' : 'Alternating sine wave';
       break;
     case 'pot':
       output = v * x.signal / 100;

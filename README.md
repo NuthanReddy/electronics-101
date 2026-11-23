@@ -23,7 +23,12 @@ Open the local URL printed by Vite (including `/electronics-101/`).
 
 - Use the chapter selector or lesson library to navigate all 68 experiments.
 - Open the Overview, Components, Circuit and Maths tabs; all share the same
-  experiment controls.
+  experiment controls. New sessions open the Circuit inspector. Click a
+  highlighted schematic part to focus its control, or inspect a component by
+  clicking its 3D body or label.
+- Compare series/parallel cell banks and DC/AC sources from the schematic or
+  mode control. Source geometry, diagrams and calculations use the same state;
+  AC shows peak supply and RMS output/current, while DC hides frequency.
 - Click a 3D knife switch or use its toggle in the lesson panel.
 - Drag to pan, right-drag to rotate, and scroll to zoom. On touch screens, one
   finger rotates and two fingers pan/zoom.
@@ -32,6 +37,8 @@ Open the local URL printed by Vite (including `/electronics-101/`).
 - Mark lessons complete. Progress and settings stay in this browser only.
   Settings includes a confirmed progress reset, animation controls and optional
   switch sounds. System reduced-motion preferences are respected.
+- Browser Back/Forward restores lesson navigation. Use arrow keys to navigate
+  lesson cards, then Enter to select one.
 - The glossary provides English and Spanish explanations of basic terms; lessons
   are written in English.
 
@@ -48,7 +55,8 @@ Nonlinear effects, thermal dynamics, reverse breakdown, IC quiescent currents,
 contact bounce, inductive transients, parasitics and detailed physical pinouts
 are not simulated. The painted resistor bands illustrate 1 kilohm; the adjustable
 live values are shown in the controls. Waveforms are labeled normalized or
-illustrative where appropriate.
+illustrative where appropriate. Output lamps in non-lamp experiments are visual
+indicators, not additional modeled resistances.
 
 Use only low-voltage, current-limited circuits when learning with real hardware.
 Check component ratings, polarity and manufacturer documentation. Never connect a
@@ -70,6 +78,9 @@ or contact geometry. Lesson topology chooses which terminals connect; rotations
 and scene transforms do not change their alignment. The geometry regression
 tests cover the cell, resistor, LED, switch and other lesson layouts without
 requiring WebGL.
+The camera fits component and label bounds on lesson changes, reset, top view
+and viewport resize. The canvas occupies a separate layout row so zooming never
+paints over the heading, status or controls.
 
 ## Inspiration and authorship
 
