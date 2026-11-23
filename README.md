@@ -29,6 +29,11 @@ Open the local URL printed by Vite (including `/electronics-101/`).
 - Compare series/parallel cell banks and DC/AC sources from the schematic or
   mode control. Source geometry, diagrams and calculations use the same state;
   AC shows peak supply and RMS output/current, while DC hides frequency.
+- AC charge markers oscillate with zero net drift per cycle. The waveform cursor
+  and charge motion play at an explicitly time-scaled 0.5 cycles/s; calculations
+  still use the chosen electrical frequency. DC markers travel one way.
+- Use **Enlarge circuit** for a larger interactive schematic and the same live
+  controls. Escape or Close returns focus to the opener without resetting values.
 - Click a 3D knife switch or use its toggle in the lesson panel.
 - Drag to pan, right-drag to rotate, and scroll to zoom. On touch screens, one
   finger rotates and two fingers pan/zoom.

@@ -135,15 +135,13 @@ describe('3D terminal connections', () => {
     verifyConnections(circuit);
     dispose(circuit);
   });
-  it('anchors every lesson and selectable component variant to physical terminals', () => {
-    for (const item of lessons) {
-      const defaults = initialInputs(item.kind, item.defaults);
-      const modes = controls(item.kind).find(control => control.key === 'gate')?.options ?? [defaults.gate];
-      for (const gate of modes) {
-        const circuit = new CircuitGeometry(item, { ...defaults, gate });
-        verifyConnections(circuit);
-        dispose(circuit);
-      }
+  it.each(lessons)('anchors $title and its selectable variants to physical terminals', item => {
+    const defaults = initialInputs(item.kind, item.defaults);
+    const modes = controls(item.kind).find(control => control.key === 'gate')?.options ?? [defaults.gate];
+    for (const gate of modes) {
+      const circuit = new CircuitGeometry(item, { ...defaults, gate });
+      verifyConnections(circuit);
+      dispose(circuit);
     }
   });
   it('preserves wire-to-terminal alignment under parent translation, scale and rotation', () => {

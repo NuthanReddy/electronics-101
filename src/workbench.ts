@@ -5,6 +5,7 @@ import type { Result } from './simulation';
 import { format } from './simulation';
 import { CircuitGeometry, palette, type CircuitConnection } from './circuit-geometry';
 import { frameCircuit } from './framing';
+import { markerPosition, waveformPoint } from './current-animation';
 
 export class Workbench {
   private scene = new THREE.Scene();
@@ -26,7 +27,8 @@ export class Workbench {
   private lesson?: Lesson;
   private motion = true;
   private showCurrent = true;
-  private reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  private motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+  private reducedMotion = this.motionPreference.matches;
   private top = false;
   private pointerStart = { x: 0, y: 0 };
   private observer: ResizeObserver;
@@ -81,6 +83,7 @@ export class Workbench {
     this.renderer.domElement.addEventListener('pointerdown', this.pointerDown);
     this.renderer.domElement.addEventListener('pointerup', this.pointerUp);
     this.renderer.domElement.addEventListener('webglcontextlost', this.contextLost);
+    this.motionPreference.addEventListener('change', this.motionChanged);
     this.resize();
     this.frame = requestAnimationFrame(this.animate);
   }
@@ -89,6 +92,7 @@ export class Workbench {
     event.preventDefault();
     this.report('The 3D graphics context was lost. Reload this page to restore the workbench; the lesson controls still work.');
   };
+  private motionChanged = (event: MediaQueryListEvent) => { this.reducedMotion = event.matches; };
   private pointerDown = (event: PointerEvent) => {
     this.pointerStart = { x: event.clientX, y: event.clientY };
     this.host.focus({ preventScroll: true });
@@ -143,7 +147,7 @@ export class Workbench {
     for (let index = 0; index < 5; index++) {
       const particle = new THREE.Mesh(new THREE.SphereGeometry(0.064, 8, 8), new THREE.MeshBasicMaterial({ color: 0xf8ce68 }));
       particle.userData.path = this.wires.length - 1;
-      particle.userData.offset = index / 5;
+      particle.userData.offset = (index + 0.5) / 5;
       parent.add(particle);
       this.particles.push(particle);
     }
@@ -173,6 +177,7 @@ export class Workbench {
   setLesson(lesson: Lesson, inputs: Inputs, resetCamera = true): void {
     this.disposeModel();
     this.lesson = lesson;
+    this.elapsed = 0;
     this.circuit = new CircuitGeometry(lesson, inputs);
     this.model.add(this.circuit);
     this.switchBlade = this.circuit.switchBlade;
@@ -284,14 +289,22 @@ export class Workbench {
   private animate = (timestamp: number): void => {
     const dt = this.lastTime ? Math.min((timestamp - this.lastTime) / 1000, 0.1) : 0;
     this.lastTime = timestamp;
-    const moving = this.motion && !this.reducedMotion;
-    if (moving) this.elapsed += dt;
     const currentFlow = this.result && this.result.current > 1e-7;
+    const moving = this.motion && !this.reducedMotion && currentFlow;
+    if (moving) this.elapsed += dt;
+    const alternating = this.lesson?.kind === 'ac' && this.inputs?.gate === 'AC';
     for (const particle of this.particles) {
       particle.visible = Boolean(this.showCurrent && currentFlow && this.inputs);
       const path = this.wires[particle.userData.path as number];
-      const speed = Math.min(0.7, 0.15 + (this.result?.current ?? 0) * 2);
-      particle.position.copy(path.getPointAt((this.elapsed * speed + (particle.userData.offset as number)) % 1));
+      particle.position.copy(path.getPointAt(markerPosition(particle.userData.offset as number, this.elapsed, this.result?.current ?? 0, alternating)));
+    }
+    if (this.lesson?.kind === 'ac' && this.inputs) {
+      const point = waveformPoint(this.elapsed, this.inputs.voltage, alternating);
+      document.querySelectorAll<SVGCircleElement>('.wave-cursor').forEach(cursor => {
+        cursor.setAttribute('cx', String(point.x));
+        cursor.setAttribute('cy', String(point.y));
+        cursor.style.display = this.showCurrent ? '' : 'none';
+      });
     }
     this.renderer.render(this.scene, this.camera);
     this.frame = requestAnimationFrame(this.animate);
@@ -299,6 +312,7 @@ export class Workbench {
   dispose(): void {
     cancelAnimationFrame(this.frame);
     this.observer.disconnect();
+    this.motionPreference.removeEventListener('change', this.motionChanged);
     this.controls.dispose();
     this.disposeModel();
     this.renderer.dispose();

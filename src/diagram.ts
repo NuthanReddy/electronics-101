@@ -1,5 +1,6 @@
 import type { Inputs, Kind } from './lessons';
 import { controls, format, logicOutput } from './simulation';
+import { acPlaybackHz } from './current-animation';
 
 const inspect = (key: string, label: string) => `data-inspect="${key}" role="button" tabindex="0" aria-label="Adjust ${label}"`;
 const resistor = (x: number, y: number, label: string, vertical = false) => {
@@ -91,5 +92,5 @@ export function waveform(kind: Kind, x: Inputs): string {
     output.push(`${20 + t * 290},${65 - y * 35}`);
   }
   const dc = kind === 'ac' && x.gate === 'DC';
-  return `<svg class="waveform" viewBox="0 0 330 115" role="img" aria-label="${dc ? 'Constant DC voltage' : kind === 'rc' ? 'Normalized capacitor voltage over five time constants' : kind === 'timer' && x.gate === 'monostable' ? 'Illustrative one-shot pulse, not elapsed-time scale' : 'Two-cycle normalized waveform'}"><path class="axis" d="M20 15v85m0 -35h290"/><polyline class="wave-input" points="${points.join(' ')}" opacity="${dc || kind === 'rc' || kind === 'timer' ? 0 : 0.45}"/><polyline points="${output.join(' ')}"/><text x="20" y="113">${dc ? 'Steady DC; amplitude normalized' : kind === 'rc' ? '0 to 5 time constants' : kind === 'timer' ? 'Illustrative pulse shape' : kind === 'ac' ? `Two cycles (${format(2 / x.frequency, 's')}); normalized` : 'Two cycles; amplitude normalized'}</text></svg>`;
+  return `<svg class="waveform" viewBox="0 0 330 115" role="img" aria-label="${dc ? 'Constant DC voltage' : kind === 'rc' ? 'Normalized capacitor voltage over five time constants' : kind === 'timer' && x.gate === 'monostable' ? 'Illustrative one-shot pulse, not elapsed-time scale' : 'Two-cycle normalized waveform'}"><path class="axis" d="M20 15v85m0 -35h290"/><polyline class="wave-input" points="${points.join(' ')}" opacity="${dc || kind === 'rc' || kind === 'timer' ? 0 : 0.45}"/><polyline points="${output.join(' ')}"/>${kind === 'ac' ? '<circle class="wave-cursor" r="4" cx="20" cy="65"/>' : ''}<text x="20" y="113">${dc ? 'Steady DC; amplitude normalized' : kind === 'rc' ? '0 to 5 time constants' : kind === 'timer' ? 'Illustrative pulse shape' : kind === 'ac' ? `Two cycles (${format(2 / x.frequency, 's')}); normalized` : 'Two cycles; amplitude normalized'}</text></svg>${kind === 'ac' && !dc ? `<p class="playback-note">Illustrative playback: ${acPlaybackHz} cycles/s (time-scaled). Markers reverse with the waveform; electrical values use the selected frequency.</p>` : ''}`;
 }

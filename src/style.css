@@ -311,3 +311,15 @@ dialog::backdrop { background: #20374755; backdrop-filter: blur(3px); }
 .schematic [data-inspect]:hover, .schematic [data-cycle]:hover { stroke: #b39753; }
 .schematic [data-inspect]:focus-visible, .schematic [data-cycle]:focus-visible { outline: 2px solid #268e87; outline-offset: 3px; }
 .schematic .part-hit { fill: none; stroke: transparent; stroke-width: 25px; }
+.enlarge-button { color: var(--teal); border: 1px solid #cad9bf; border-radius: 6px; padding: 8px 12px; font-size: 11px; margin-bottom: 12px; }
+.waveform .wave-cursor { fill: #b39753; stroke: #faf8ef; stroke-width: 1.5; }
+.playback-note { font-size: 10px; color: #718576; line-height: 1.7; }
+#circuit-dialog { width: min(1050px, 96vw); max-width: 96vw; max-height: 94dvh; }
+.circuit-dialog-body { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(230px, 1fr); gap: 24px; padding: 20px; }
+#enlarged-schematic { min-width: 0; }
+#enlarged-controls .experiment-controls { margin-top: 0; }
+@media (max-width: 650px) {
+  .circuit-dialog-body { grid-template-columns: minmax(0, 1fr); padding: 12px; gap: 12px; }
+  #circuit-dialog .dialog-header { padding: 14px; gap: 10px; }
+  #circuit-dialog .dialog-header h2 { font-size: 18px; }
+}

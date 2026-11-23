@@ -4,6 +4,7 @@ import { controls, format, initialInputs, simulate } from './simulation';
 import { completeLesson, decodeState, emptyState, storageKey, type SavedState } from './state';
 import { schematic, waveform } from './diagram';
 import { Workbench } from './workbench';
+import { acPlaybackHz } from './current-animation';
 
 const paths: Record<string, string> = {
   menu: 'M4 6h16M4 12h16M4 18h16',
@@ -66,7 +67,7 @@ app.innerHTML = `
         <div class="tabs" role="tablist" aria-label="Lesson views">
           ${['Overview', 'Components', 'Circuit', 'Maths'].map((tab, index) => `<button id="tab-${tab.toLowerCase()}" role="tab" aria-selected="${index === 0}" aria-controls="tab-content" tabindex="${index === 0 ? 0 : -1}" data-tab="${tab.toLowerCase()}">${tab}</button>`).join('')}
         </div>
-        <div class="panel-scroll"><div id="tab-content" role="tabpanel" aria-labelledby="tab-overview"></div><section class="experiment-controls"><div class="section-label">${icon('settings', 15)} MAKE IT YOURS <button class="text-button" data-action="reset-experiment">Reset</button></div><div id="controls"></div></section><p class="model-note">Idealized learning models, not SPICE. Always check real component ratings. Use only low-voltage, current-limited circuits.</p></div>
+        <div class="panel-scroll"><div id="tab-content" role="tabpanel" aria-labelledby="tab-overview"></div><div id="controls-home"><section class="experiment-controls"><div class="section-label">${icon('settings', 15)} MAKE IT YOURS <button class="text-button" data-action="reset-experiment">Reset</button></div><div id="controls"></div></section></div><p class="model-note">Idealized learning models, not SPICE. Always check real component ratings. Use only low-voltage, current-limited circuits.</p></div>
         <div class="completion-bar"><button id="complete" data-action="complete">${icon('check', 18)} Mark lesson complete</button><span id="lesson-number">LESSON 01 / 68</span></div>
       </aside>
     </main>
@@ -77,6 +78,7 @@ app.innerHTML = `
   </div>
   <div id="notification" class="notification" role="status" aria-live="polite" hidden></div>
   <dialog id="dialog"><div class="dialog-header"><h2 id="dialog-title"></h2><button data-action="close-dialog" aria-label="Close dialog">${icon('close')}</button></div><div id="dialog-body"></div></dialog>
+  <dialog id="circuit-dialog" aria-labelledby="circuit-dialog-title"><div class="dialog-header"><h2 id="circuit-dialog-title">Enlarged circuit</h2><button data-action="close-circuit" aria-label="Close enlarged circuit" autofocus>${icon('close')}</button></div><div class="circuit-dialog-body"><div id="enlarged-schematic"></div><div id="enlarged-controls"></div></div></dialog>
 `;
 
 let notificationTimeout = 0;
@@ -195,6 +197,23 @@ function renderControls(): void {
     return `<label class="range-control"><span>${control.label}<output id="control-${control.key}">${format(Number(value), control.unit ?? '')}</output></span><input type="range" data-input="${control.key}" min="${control.min}" max="${control.max}" step="${control.step}" value="${value}" aria-label="${control.label}" /></label>`;
   }).join('');
 }
+function circuitMarkup(): string {
+  return `<p class="small-copy">Click a highlighted part to adjust it. Teal indicates an energized experiment.</p>${schematic(lesson.kind, inputs, result.active)}<p class="diagram-note">Conceptual diagram and 3D arrangement, not a pin-by-pin construction guide.</p>${['ac', 'rectifier', 'rc', 'timer'].includes(lesson.kind) ? waveform(lesson.kind, inputs) : ''}<div class="circuit-state">${icon('bolt', 17)}<span>${result.status}</span></div>`;
+}
+function circuitScope(): string {
+  return $<HTMLDialogElement>('#circuit-dialog').open ? '#enlarged-schematic' : '#schematic-holder';
+}
+function enlargeCircuit(): void {
+  $('#circuit-dialog-title').textContent = `${lesson.title} - circuit`;
+  $('#enlarged-schematic').innerHTML = circuitMarkup();
+  $('#enlarged-controls').append($('.experiment-controls'));
+  $<HTMLDialogElement>('#circuit-dialog').showModal();
+}
+$<HTMLDialogElement>('#circuit-dialog').addEventListener('close', () => {
+  $('#controls-home').append($('.experiment-controls'));
+  $('#enlarged-schematic').replaceChildren();
+  document.querySelector<HTMLElement>('[data-action="enlarge-circuit"]')?.focus({ preventScroll: true });
+});
 function renderTab(): void {
   document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button => {
     const active = button.dataset.tab === tab;
@@ -211,7 +230,7 @@ function renderTab(): void {
     if (!keys.includes(component)) component = keys[0];
     content.innerHTML = `${heading}<p class="small-copy">Select a component to get to know it.</p><div class="component-list">${keys.map(key => `<button data-component="${key}" aria-pressed="${component === key}" class="${component === key ? 'active' : ''}">${icon(key === 'battery' ? 'bolt' : key === 'chip' ? 'chip' : 'settings', 19)}<span>${componentInfo[key].title}</span>${icon('right', 15)}</button>`).join('')}</div><div class="component-detail"><h3>${componentInfo[component].title}</h3><p>${componentInfo[component].text}</p></div>`;
   } else if (tab === 'circuit') {
-    content.innerHTML = `${heading}<p class="small-copy">Click a highlighted part to adjust it. Teal indicates an energized experiment.</p><div id="schematic-holder">${schematic(lesson.kind, inputs, result.active)}</div><p class="diagram-note">Conceptual diagram and 3D arrangement, not a pin-by-pin construction guide.</p>${['ac', 'rectifier', 'rc', 'timer'].includes(lesson.kind) ? waveform(lesson.kind, inputs) : ''}<div class="circuit-state">${icon('bolt', 17)}<span>${result.status}</span></div>`;
+    content.innerHTML = `${heading}<button class="enlarge-button" data-action="enlarge-circuit" aria-haspopup="dialog">Enlarge circuit</button><div id="schematic-holder">${circuitMarkup()}</div>`;
   } else {
     content.innerHTML = `${heading}<p class="small-copy">Numbers that move with your experiment.</p><div class="formula">${result.formula}</div><dl class="math-readings">${[
       { label: lesson.kind === 'ac' && inputs.gate === 'AC' ? 'AC peak voltage' : lesson.kind === 'cells' ? 'Voltage per cell' : 'Supply voltage', value: inputs.voltage, unit: 'V' },
@@ -220,6 +239,10 @@ function renderTab(): void {
       ...result.readings,
       { label: lesson.kind === 'filter' ? 'Average resistor power' : lesson.kind === 'rc' && inputs.gate === 'discharge' ? 'Discharge resistor power' : ['opamp', 'comparator', 'sensor', 'capacitor'].includes(lesson.kind) ? 'Modeled source power (excludes IC quiescent power)' : 'Modeled source power', value: result.power, unit: 'W' },
     ].map(reading => `<div><dt>${reading.label}</dt><dd>${format(reading.value, reading.unit)}</dd></div>`).join('')}</dl><p class="math-assumptions">Ideal sources and simplified component behavior. For amplifiers and digital ICs, supply and quiescent currents are not modeled.</p>${lesson.kind === 'logic' ? `<table class="truth-table"><caption>${inputs.gate} truth table</caption><thead><tr><th>A</th><th>B</th><th>OUT</th></tr></thead><tbody>${[0, 1].flatMap(a => [0, 1].map(b => `<tr><td>${a}</td><td>${b}</td><td>${Number(simulate('logic', { ...inputs, closed: Boolean(a), reverse: Boolean(b) }).output > 0)}</td></tr>`)).join('')}</tbody></table>` : ''}`;
+  }
+  if ($<HTMLDialogElement>('#circuit-dialog').open) {
+    $('#circuit-dialog-title').textContent = `${lesson.title} - circuit`;
+    $('#enlarged-schematic').innerHTML = circuitMarkup();
   }
 }
 function updateReadings(): void {
@@ -230,7 +253,7 @@ function updateReadings(): void {
   $('#supply-value').textContent = format(inputs.voltage, 'V');
   $('#current-value').textContent = format(result.current, 'A');
   $('#output-value').textContent = format(result.output, 'V');
-  $('#stage-status').textContent = result.status;
+  $('#stage-status').textContent = lesson.kind === 'ac' && inputs.gate === 'AC' ? `${result.status} - motion ${acPlaybackHz} cycles/s (time-scaled)` : result.status;
   $('.stage-note').classList.toggle('inactive', !result.active);
   workbench?.update(inputs, result);
   if (tab === 'maths' || tab === 'circuit') renderTab();
@@ -272,7 +295,7 @@ function cycleMode(key: string): void {
   const select = $<HTMLSelectElement>('#controls [data-input="gate"]');
   select.value = control.options[(index + 1) % control.options.length];
   select.dispatchEvent(new Event('input', { bubbles: true }));
-  document.querySelector<SVGElement>(`[data-cycle="${key}"]`)?.focus();
+  document.querySelector<SVGElement>(`${circuitScope()} [data-cycle="${key}"]`)?.focus();
 }
 function toggleInput(key: 'closed' | 'reverse'): void {
   if (!controls(lesson.kind).some(control => control.key === key)) {
@@ -286,7 +309,7 @@ function toggleInput(key: 'closed' | 'reverse'): void {
   renderControls();
   updateReadings();
   if (restoreControlFocus) $(`#controls [data-toggle="${key}"]`).focus();
-  if (restoreSchematicFocus && tab === 'circuit') $(`#schematic-holder [data-toggle="${key}"]`).focus();
+  if (restoreSchematicFocus && tab === 'circuit') $(`${circuitScope()} [data-toggle="${key}"]`).focus();
   chirp();
 }
 function openDialog(title: string, body: string): void {
@@ -336,6 +359,8 @@ function handleAction(action: string): void {
     case 'settings': settings(); break;
     case 'glossary': glossary(); break;
     case 'close-dialog': $<HTMLDialogElement>('#dialog').close(); break;
+    case 'enlarge-circuit': enlargeCircuit(); break;
+    case 'close-circuit': $<HTMLDialogElement>('#circuit-dialog').close(); break;
     case 'previous': selectLesson(adjacentLesson(lesson.id, -1)); break;
     case 'next': selectLesson(adjacentLesson(lesson.id, 1)); break;
     case 'complete':
@@ -412,6 +437,20 @@ document.addEventListener('input', event => {
 });
 document.addEventListener('keydown', event => {
   const target = event.target;
+  const circuitDialog = $<HTMLDialogElement>('#circuit-dialog');
+  if (circuitDialog.open && event.key === 'Escape') {
+    event.preventDefault();
+    circuitDialog.close();
+    return;
+  }
+  if (circuitDialog.open && event.key === 'Tab') {
+    const focusable = [...circuitDialog.querySelectorAll<HTMLElement | SVGElement>('button, input, select, [tabindex="0"]')];
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (event.shiftKey && target === first) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && target === last) { event.preventDefault(); first?.focus(); }
+    return;
+  }
   if (target instanceof Element && target.matches('[data-inspect], [data-cycle]') && [' ', 'Enter'].includes(event.key)) {
     event.preventDefault();
     const element = target as SVGElement;
